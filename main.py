@@ -1323,40 +1323,87 @@ def modelscope_image_url(value, max_size=1536):
         return compress_data_url_image(value, max_size=max_size)
     return value
 
+def valid_video_image_input(value: str) -> bool:
+    if not isinstance(value, str):
+        return False
+    value = value.strip()
+    return (
+        value.startswith("http://") or
+        value.startswith("https://") or
+        value.startswith("asset://") or
+        (value.startswith("data:image/") and ";base64," in value)
+    )
+
+def valid_apimart_video_image_input(value: str) -> bool:
+    if not isinstance(value, str):
+        return False
+    value = value.strip()
+    return value.startswith("http://") or value.startswith("https://") or value.startswith("asset://")
+
+def invalid_video_image_preview(value: str) -> str:
+    text = str(value or "")
+    if text.startswith("data:"):
+        return text.split(";base64,", 1)[0] + ";base64,..."
+    return text[:120]
+
+def extract_apimart_asset_url(payload):
+    if isinstance(payload, list):
+        for item in payload:
+            found = extract_apimart_asset_url(item)
+            if found:
+                return found
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    url_keys = ("url", "asset_url", "assetUrl", "uri", "file_url", "fileUrl")
+    for key in url_keys:
+        value = str(payload.get(key) or "").strip()
+        if valid_apimart_video_image_input(value):
+            return value
+    id_keys = ("asset_id", "assetId", "file_id", "fileId", "id")
+    for key in id_keys:
+        value = str(payload.get(key) or "").strip()
+        if value:
+            return value if value.startswith("asset://") else f"asset://{value}"
+    for key in ("data", "file", "asset", "result"):
+        found = extract_apimart_asset_url(payload.get(key))
+        if found:
+            return found
+    return ""
+
 async def upload_image_for_apimart(client, provider, ref_url: str) -> str:
-    """把本地 /output/* 或 /assets/* 图片上传到 APIMart 文件接口，返回 https URL。
-    如果已经是 http/https/asset:// URL，直接返回原值。"""
+    """把本地图片转成上游可接受的输入。
+    按 APIMart 文档上传到 /v1/uploads/images，拿到可用于生成接口的 http/https URL。
+    绝不把 /output/* 或 /assets/* 这类本地路径直接传给上游。"""
+    ref_url = str(ref_url or "").strip()
     if not ref_url:
         return ref_url
     # 已经是网络 URL 或 asset:// → 直接可用，无需上传
     if ref_url.startswith("http://") or ref_url.startswith("https://") or ref_url.startswith("asset://"):
         return ref_url
-    # data URL → 不支持，返回空串（APIMart 会拒绝 base64）
+    # 当前 APIMart 视频接口只接受 http(s) 或 asset://，不接受 data:image。
     if ref_url.startswith("data:"):
         return ""
     path = output_file_from_url(ref_url)
     if not path:
-        return ref_url  # 无法解析，原样返回，让上游自行处理
+        return ""  # 无法解析成本地文件时，避免把无效本地路径传给上游
     try:
         ct = content_type_for_path(path)
         base_url = video_api_root(provider)
-        upload_url = f"{base_url}/v1/files"
+        upload_url = f"{base_url}/v1/uploads/images"
         with open(path, "rb") as fh:
             files = {"file": (os.path.basename(path), fh, ct)}
-            resp = await client.post(upload_url, headers=api_headers(provider=provider), files=files, timeout=60)
-        if resp.status_code == 200:
+            resp = await client.post(upload_url, headers=api_headers(json_body=False, provider=provider), files=files, timeout=60)
+        if resp.status_code in (200, 201):
             rj = resp.json()
-            # 兼容 {"url":...} 或 {"data":{"url":...}} 两种返回格式
-            url = (rj.get("url") or
-                   (rj.get("data") or {}).get("url") or
-                   (rj.get("file") or {}).get("url") or "")
-            if url:
+            url = extract_apimart_asset_url(rj)
+            if valid_apimart_video_image_input(url):
                 return url
-        print(f"APIMart 文件上传失败 ({resp.status_code})，降级使用原路径: {resp.text[:200]}")
-        return ref_url
+            print(f"APIMart 文件上传返回中未找到可用 asset/url: {str(rj)[:300]}")
+        print(f"APIMart 文件上传失败 ({resp.status_code}): {resp.text[:300]}")
     except Exception as e:
-        print(f"APIMart 文件上传异常，降级使用原路径: {e}")
-        return ref_url
+        print(f"APIMart 文件上传异常: {e}")
+    return ""
 
 async def save_ai_image_to_output(image_data, prefix="online_", category="output"):
     filename = f"{prefix}{uuid.uuid4().hex[:10]}.png"
@@ -2183,22 +2230,30 @@ async def canvas_video(payload: CanvasVideoRequest):
             if is_apimart:
                 # APIMart 只接受 http/https 或 asset:// URL，先上传本地图片取回网络 URL
                 image_with_roles = []
+                invalid_images = []
                 for ref in payload.images[:9]:
                     if not ref.url:
                         continue
                     role = str(ref.role or "").strip()
                     if role in {"first_frame", "last_frame", "reference_image"}:
                         up_url = await upload_image_for_apimart(client, provider, ref.url)
-                        if up_url:
+                        if valid_apimart_video_image_input(up_url):
                             image_with_roles.append({"url": up_url, "role": role})
+                        else:
+                            invalid_images.append(ref.url)
                 image_payload = []
                 if not image_with_roles:
                     for ref in payload.images[:9]:
                         if not ref.url:
                             continue
                         up_url = await upload_image_for_apimart(client, provider, ref.url)
-                        if up_url:
+                        if valid_apimart_video_image_input(up_url):
                             image_payload.append(up_url)
+                        else:
+                            invalid_images.append(ref.url)
+                if payload.images and not image_with_roles and not image_payload:
+                    sample = invalid_video_image_preview(invalid_images[0] if invalid_images else "")
+                    raise HTTPException(status_code=400, detail=f"输入图片无法转换为视频接口支持的格式：{sample}")
                 # --- APIMart 请求体 ---
                 body = {
                     "prompt": payload.prompt,
