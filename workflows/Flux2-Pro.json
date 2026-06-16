@@ -1,0 +1,132 @@
+{
+  "f2_unet": {
+    "inputs": {
+      "unet_name": "flux/flux2_dev_fp8mixed.safetensors",
+      "weight_dtype": "fp8_e4m3fn"
+    },
+    "class_type": "UNETLoader"
+  },
+  "f2_clip": {
+    "inputs": {
+      "clip_name": "mistral_3_small_flux2_fp8.safetensors",
+      "type": "flux2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader"
+  },
+  "f2_vae": {
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    },
+    "class_type": "VAELoader"
+  },
+  "f2_pos": {
+    "inputs": {
+      "text": "{{prompt}}",
+      "clip": [
+        "f2_clip",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "f2_guidance": {
+    "inputs": {
+      "conditioning": [
+        "f2_pos",
+        0
+      ],
+      "guidance": 4.0
+    },
+    "class_type": "FluxGuidance"
+  },
+  "f2_guider": {
+    "inputs": {
+      "model": [
+        "f2_unet",
+        0
+      ],
+      "conditioning": [
+        "f2_guidance",
+        0
+      ]
+    },
+    "class_type": "BasicGuider"
+  },
+  "f2_latent": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptyFlux2LatentImage"
+  },
+  "f2_noise": {
+    "inputs": {
+      "noise_seed": 0
+    },
+    "class_type": "RandomNoise"
+  },
+  "f2_sampler": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect"
+  },
+  "f2_scheduler": {
+    "inputs": {
+      "steps": 20,
+      "width": 1024,
+      "height": 1024
+    },
+    "class_type": "Flux2Scheduler"
+  },
+  "f2_sample": {
+    "inputs": {
+      "noise": [
+        "f2_noise",
+        0
+      ],
+      "guider": [
+        "f2_guider",
+        0
+      ],
+      "sampler": [
+        "f2_sampler",
+        0
+      ],
+      "sigmas": [
+        "f2_scheduler",
+        0
+      ],
+      "latent_image": [
+        "f2_latent",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced"
+  },
+  "f2_decode": {
+    "inputs": {
+      "samples": [
+        "f2_sample",
+        0
+      ],
+      "vae": [
+        "f2_vae",
+        0
+      ]
+    },
+    "class_type": "VAEDecode"
+  },
+  "f2_save": {
+    "inputs": {
+      "images": [
+        "f2_decode",
+        0
+      ],
+      "filename_prefix": "flux2_pro/"
+    },
+    "class_type": "SaveImage"
+  }
+}

@@ -1,0 +1,326 @@
+{
+  "ltxl_clip": {
+    "inputs": {
+      "clip_name1": "gemma_3_12B_it_fp8_e4m3fn.safetensors",
+      "clip_name2": "ltx-2.3_text_projection_bf16.safetensors",
+      "type": "ltxv",
+      "device": "default"
+    },
+    "class_type": "DualCLIPLoader"
+  },
+  "ltxl_vae": {
+    "inputs": {
+      "vae_name": "LTX23_video_vae_bf16.safetensors"
+    },
+    "class_type": "VAELoader"
+  },
+  "ltxl_vae_audio_lite": {
+    "inputs": {
+      "vae_name": "LTX23_audio_vae_bf16.safetensors",
+      "device": "main_device",
+      "weight_dtype": "bf16"
+    },
+    "class_type": "VAELoaderKJ"
+  },
+  "ltxl_unet": {
+    "inputs": {
+      "unet_name": "Ltx/ltx-2.3-22b-distilled_transformer_only_fp8_input_scaled_v3.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader"
+  },
+  "ltxl_lora": {
+    "inputs": {
+      "lora_name": "Ltx/ltx-2.3-22b-distilled-lora-384.safetensors",
+      "strength_model": 0.5,
+      "model": [
+        "ltxl_unet",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly"
+  },
+  "ltxl_lora_sub": {
+    "inputs": {
+      "lora_name": "Ltx/ltx2.3-ic-subtitles-remove-general.safetensors",
+      "strength_model": 0.8,
+      "model": [
+        "ltxl_lora",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly"
+  },
+  "ltxl_lora_wm": {
+    "inputs": {
+      "lora_name": "Ltx/ltx2.3-ic-watermark-remove-general.safetensors",
+      "strength_model": 0.5,
+      "model": [
+        "ltxl_lora_sub",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly"
+  },
+  "ltxl_pos_text": {
+    "inputs": {
+      "text": "{{prompt}}",
+      "clip": [
+        "ltxl_clip",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "ltxl_neg_text": {
+    "inputs": {
+      "text": "subtitles, watermark, blurry, low quality, worst quality",
+      "clip": [
+        "ltxl_clip",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "ltxl_cond": {
+    "inputs": {
+      "positive": [
+        "ltxl_pos_text",
+        0
+      ],
+      "negative": [
+        "ltxl_neg_text",
+        0
+      ],
+      "frame_rate": 24
+    },
+    "class_type": "LTXVConditioning"
+  },
+  "ltxl_latent": {
+    "inputs": {
+      "width": 1281,
+      "height": 705,
+      "length": 121,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLTXVLatentVideo"
+  },
+  "ltxl_empty_audio": {
+    "inputs": {
+      "audio_vae": [
+        "ltxl_vae_audio_lite",
+        0
+      ],
+      "frames_number": 121,
+      "frame_rate": 24,
+      "batch_size": 1
+    },
+    "class_type": "LTXVEmptyLatentAudio"
+  },
+  "ltxl_av_latent": {
+    "inputs": {
+      "video_latent": [
+        "ltxl_latent",
+        0
+      ],
+      "audio_latent": [
+        "ltxl_empty_audio",
+        0
+      ]
+    },
+    "class_type": "LTXVConcatAVLatent"
+  },
+  "ltxl_sage": {
+    "inputs": {
+      "model": [
+        "ltxl_lora_wm",
+        0
+      ],
+      "sage_attention": "auto",
+      "allow_compile": false
+    },
+    "class_type": "PathchSageAttentionKJ"
+  },
+  "ltxl_chunk": {
+    "inputs": {
+      "model": [
+        "ltxl_sage",
+        0
+      ],
+      "chunks": 4,
+      "dim_threshold": 4096
+    },
+    "class_type": "LTXVChunkFeedForward"
+  },
+  "ltxl_attn_tune": {
+    "inputs": {
+      "model": [
+        "ltxl_chunk",
+        0
+      ],
+      "blocks": 40,
+      "video_scale": 1.0,
+      "audio_scale": 1.0,
+      "audio_to_video_scale": 1.0,
+      "video_to_audio_scale": 1.0,
+      "triton_kernels": true
+    },
+    "class_type": "LTX2AttentionTunerPatch"
+  },
+  "ltxl_nag": {
+    "inputs": {
+      "model": [
+        "ltxl_attn_tune",
+        0
+      ],
+      "nag_cond_video": [
+        "ltxl_cond",
+        0
+      ],
+      "nag_cond_audio": [
+        "ltxl_cond",
+        1
+      ],
+      "nag_scale": 11,
+      "nag_alpha": 0.25,
+      "nag_tau": 2.5,
+      "inplace": true
+    },
+    "class_type": "LTX2_NAG"
+  },
+  "ltxl_preview": {
+    "inputs": {
+      "model": [
+        "ltxl_nag",
+        0
+      ],
+      "preview_rate": 8
+    },
+    "class_type": "LTX2SamplingPreviewOverride"
+  },
+  "ltxl_guider": {
+    "inputs": {
+      "model": [
+        "ltxl_preview",
+        0
+      ],
+      "positive": [
+        "ltxl_cond",
+        0
+      ],
+      "negative": [
+        "ltxl_cond",
+        1
+      ],
+      "cfg": 1.0
+    },
+    "class_type": "CFGGuider"
+  },
+  "ltxl_sampler": {
+    "inputs": {
+      "sampler_name": "euler_cfg_pp"
+    },
+    "class_type": "KSamplerSelect"
+  },
+  "ltxl_noise": {
+    "inputs": {
+      "noise_seed": 0
+    },
+    "class_type": "RandomNoise"
+  },
+  "ltxl_scheduler": {
+    "inputs": {
+      "sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+    },
+    "class_type": "ManualSigmas"
+  },
+  "ltxl_sample": {
+    "inputs": {
+      "noise": [
+        "ltxl_noise",
+        0
+      ],
+      "guider": [
+        "ltxl_guider",
+        0
+      ],
+      "sampler": [
+        "ltxl_sampler",
+        0
+      ],
+      "sigmas": [
+        "ltxl_scheduler",
+        0
+      ],
+      "latent_image": [
+        "ltxl_av_latent",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced"
+  },
+  "ltxl_separate": {
+    "inputs": {
+      "av_latent": [
+        "ltxl_sample",
+        0
+      ]
+    },
+    "class_type": "LTXVSeparateAVLatent"
+  },
+  "ltxl_decode_video": {
+    "inputs": {
+      "samples": [
+        "ltxl_separate",
+        0
+      ],
+      "vae": [
+        "ltxl_vae",
+        0
+      ]
+    },
+    "class_type": "VAEDecode"
+  },
+  "ltxl_decode_audio": {
+    "inputs": {
+      "samples": [
+        "ltxl_separate",
+        1
+      ],
+      "vae": [
+        "ltxl_vae_audio_lite",
+        0
+      ]
+    },
+    "class_type": "VAEDecode"
+  },
+  "ltxl_out_video": {
+    "inputs": {
+      "images": [
+        "ltxl_decode_video",
+        0
+      ],
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "ltx_av_lite/",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "pingpong": false,
+      "save_output": true
+    },
+    "class_type": "VHS_VideoCombine"
+  },
+  "ltxl_out_audio": {
+    "inputs": {
+      "audio": [
+        "ltxl_decode_audio",
+        0
+      ],
+      "filename_prefix": "ltx_av_lite/",
+      "format": "wav"
+    },
+    "class_type": "SaveAudio"
+  }
+}

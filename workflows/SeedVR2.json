@@ -1,0 +1,73 @@
+{
+  "sv2_video": {
+    "inputs": {
+      "video": "{{video}}"
+    },
+    "class_type": "LoadVideoUpload"
+  },
+  "sv2_model": {
+    "inputs": {
+      "model": "seedvr2_ema_3b_fp16.safetensors",
+      "device": "cuda:0",
+      "blocks_to_swap": 32,
+      "swap_io_components": true,
+      "offload_device": "cpu",
+      "cache_model": false,
+      "attention_mode": "sdpa"
+    },
+    "class_type": "SeedVR2LoadDiTModel"
+  },
+  "sv2_vae": {
+    "inputs": {
+      "model": "ema_vae_fp16.safetensors",
+      "device": "cuda:0",
+      "encode_tiled": true,
+      "decode_tiled": true,
+      "offload_device": "cpu"
+    },
+    "class_type": "SeedVR2LoadVAEModel"
+  },
+  "sv2_process": {
+    "inputs": {
+      "video": [
+        "sv2_video",
+        0
+      ],
+      "model": [
+        "sv2_model",
+        0
+      ],
+      "vae": [
+        "sv2_vae",
+        0
+      ],
+      "target_resolution": 720,
+      "num_frames": 25,
+      "overlap": 5,
+      "sample_idx": 0,
+      "chunked_attn": true,
+      "triton_kernels": true,
+      "color_fix": "wavelet",
+      "fast_decoder": true
+    },
+    "class_type": "SeedVR2Process"
+  },
+  "sv2_combine": {
+    "inputs": {
+      "images": [
+        "sv2_process",
+        0
+      ],
+      "frame_rate": 25,
+      "loop_count": 0,
+      "filename_prefix": "seedvr2/",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "pingpong": false,
+      "save_output": true
+    },
+    "class_type": "VHS_VideoCombine"
+  }
+}

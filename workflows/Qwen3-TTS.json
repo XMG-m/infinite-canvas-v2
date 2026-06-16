@@ -1,0 +1,105 @@
+{
+  "tts_pos": {
+    "inputs": {
+      "text": "{{text}}",
+      "clip": [
+        "qwen_clip",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "tts_ref_audio": {
+    "inputs": {
+      "audio": "{{ref_audio}}"
+    },
+    "class_type": "LoadAudio"
+  },
+  "tts_audio_encode": {
+    "inputs": {
+      "audio": [
+        "tts_ref_audio",
+        0
+      ],
+      "vae": [
+        "qwen_vae",
+        0
+      ]
+    },
+    "class_type": "VAEEncodeForInference"
+  },
+  "tts_cfg": {
+    "inputs": {
+      "model": [
+        "qwen_model",
+        0
+      ],
+      "cfg_scale": 2.5,
+      "top_p": 0.9,
+      "temperature": 1.0,
+      "repetition_penalty": 1.2
+    },
+    "class_type": "Qwen3TTSSampler"
+  },
+  "tts_sample": {
+    "inputs": {
+      "model": [
+        "tts_cfg",
+        0
+      ],
+      "positive": [
+        "tts_pos",
+        0
+      ],
+      "audio_opt": [
+        "tts_audio_encode",
+        0
+      ]
+    },
+    "class_type": "Qwen3TTSSample"
+  },
+  "tts_decode": {
+    "inputs": {
+      "samples": [
+        "tts_sample",
+        0
+      ],
+      "vae": [
+        "qwen_vae",
+        0
+      ]
+    },
+    "class_type": "VAEDecode"
+  },
+  "tts_save": {
+    "inputs": {
+      "audio": [
+        "tts_decode",
+        0
+      ],
+      "filename_prefix": "qwen3_tts/"
+    },
+    "class_type": "SaveAudio"
+  },
+  "qwen_clip": {
+    "inputs": {
+      "clip_name": "qwen3_tts_tokenizer.safetensors",
+      "type": "qwen3_tts",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader"
+  },
+  "qwen_vae": {
+    "inputs": {
+      "vae_name": "qwen3_tts_vae.safetensors"
+    },
+    "class_type": "VAELoader"
+  },
+  "qwen_model": {
+    "inputs": {
+      "unet_name": "qwen3_tts_model.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader"
+  }
+}

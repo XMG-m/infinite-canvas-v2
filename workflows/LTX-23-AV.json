@@ -1,0 +1,322 @@
+{
+  "ltx_ckpt": {
+    "inputs": {
+      "ckpt_name": "ltx-2.3-22b-dev.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple"
+  },
+  "ltx_vae_audio": {
+    "inputs": {
+      "ckpt_name": "ltx-2.3-22b-dev.safetensors"
+    },
+    "class_type": "LTXVAudioVAELoader"
+  },
+  "ltx_text_encoder": {
+    "inputs": {
+      "text_encoder": "gemma_3_12B_it_fp8_e4m3fn.safetensors",
+      "ckpt_name": "ltx-2.3-22b-dev.safetensors",
+      "device": "default"
+    },
+    "class_type": "LTXAVTextEncoderLoader"
+  },
+  "ltx_lora": {
+    "inputs": {
+      "lora_name": "Ltx/ltx-2.3-22b-distilled-lora-384.safetensors",
+      "strength_model": 0.5,
+      "model": [
+        "ltx_ckpt",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly"
+  },
+  "ltx_lora_sub": {
+    "inputs": {
+      "lora_name": "Ltx/ltx2.3-ic-subtitles-remove-general.safetensors",
+      "strength_model": 0.8,
+      "model": [
+        "ltx_lora",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly"
+  },
+  "ltx_lora_wm": {
+    "inputs": {
+      "lora_name": "Ltx/ltx2.3-ic-watermark-remove-general.safetensors",
+      "strength_model": 0.5,
+      "model": [
+        "ltx_lora_sub",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly"
+  },
+  "ltx_pos_text": {
+    "inputs": {
+      "text": "{{prompt}}",
+      "clip": [
+        "ltx_text_encoder",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "ltx_neg_text": {
+    "inputs": {
+      "text": "subtitles, watermark, blurry, low quality",
+      "clip": [
+        "ltx_text_encoder",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "ltx_cond": {
+    "inputs": {
+      "positive": [
+        "ltx_pos_text",
+        0
+      ],
+      "negative": [
+        "ltx_neg_text",
+        0
+      ],
+      "frame_rate": 24
+    },
+    "class_type": "LTXVConditioning"
+  },
+  "ltx_latent": {
+    "inputs": {
+      "width": 1281,
+      "height": 705,
+      "length": 121,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLTXVLatentVideo"
+  },
+  "ltx_empty_audio": {
+    "inputs": {
+      "audio_vae": [
+        "ltx_vae_audio",
+        0
+      ],
+      "frames_number": 121,
+      "frame_rate": 24,
+      "batch_size": 1
+    },
+    "class_type": "LTXVEmptyLatentAudio"
+  },
+  "ltx_av_latent": {
+    "inputs": {
+      "video_latent": [
+        "ltx_latent",
+        0
+      ],
+      "audio_latent": [
+        "ltx_empty_audio",
+        0
+      ]
+    },
+    "class_type": "LTXVConcatAVLatent"
+  },
+  "ltx_sage": {
+    "inputs": {
+      "model": [
+        "ltx_lora_wm",
+        0
+      ],
+      "sage_attention": "auto",
+      "allow_compile": false
+    },
+    "class_type": "PathchSageAttentionKJ"
+  },
+  "ltx_chunk": {
+    "inputs": {
+      "model": [
+        "ltx_sage",
+        0
+      ],
+      "chunks": 4,
+      "dim_threshold": 4096
+    },
+    "class_type": "LTXVChunkFeedForward"
+  },
+  "ltx_attn_tune": {
+    "inputs": {
+      "model": [
+        "ltx_chunk",
+        0
+      ],
+      "blocks": 40,
+      "video_scale": 1.0,
+      "audio_scale": 1.0,
+      "audio_to_video_scale": 1.0,
+      "video_to_audio_scale": 1.0,
+      "triton_kernels": true
+    },
+    "class_type": "LTX2AttentionTunerPatch"
+  },
+  "ltx_nag": {
+    "inputs": {
+      "model": [
+        "ltx_attn_tune",
+        0
+      ],
+      "nag_cond_video": [
+        "ltx_cond",
+        0
+      ],
+      "nag_cond_audio": [
+        "ltx_cond",
+        1
+      ],
+      "nag_scale": 11,
+      "nag_alpha": 0.25,
+      "nag_tau": 2.5,
+      "inplace": true
+    },
+    "class_type": "LTX2_NAG"
+  },
+  "ltx_preview": {
+    "inputs": {
+      "model": [
+        "ltx_nag",
+        0
+      ],
+      "preview_rate": 8
+    },
+    "class_type": "LTX2SamplingPreviewOverride"
+  },
+  "ltx_guider": {
+    "inputs": {
+      "model": [
+        "ltx_preview",
+        0
+      ],
+      "positive": [
+        "ltx_cond",
+        0
+      ],
+      "negative": [
+        "ltx_cond",
+        1
+      ],
+      "cfg": 1.0
+    },
+    "class_type": "CFGGuider"
+  },
+  "ltx_sampler": {
+    "inputs": {
+      "sampler_name": "euler_cfg_pp"
+    },
+    "class_type": "KSamplerSelect"
+  },
+  "ltx_noise": {
+    "inputs": {
+      "noise_seed": 0
+    },
+    "class_type": "RandomNoise"
+  },
+  "ltx_scheduler": {
+    "inputs": {
+      "sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+    },
+    "class_type": "ManualSigmas"
+  },
+  "ltx_sample": {
+    "inputs": {
+      "noise": [
+        "ltx_noise",
+        0
+      ],
+      "guider": [
+        "ltx_guider",
+        0
+      ],
+      "sampler": [
+        "ltx_sampler",
+        0
+      ],
+      "sigmas": [
+        "ltx_scheduler",
+        0
+      ],
+      "latent_image": [
+        "ltx_av_latent",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced"
+  },
+  "ltx_separate": {
+    "inputs": {
+      "av_latent": [
+        "ltx_sample",
+        0
+      ]
+    },
+    "class_type": "LTXVSeparateAVLatent"
+  },
+  "ltx_vae": {
+    "inputs": {
+      "vae_name": "LTX23_video_vae_bf16.safetensors"
+    },
+    "class_type": "VAELoader"
+  },
+  "ltx_decode_video": {
+    "inputs": {
+      "samples": [
+        "ltx_separate",
+        0
+      ],
+      "vae": [
+        "ltx_vae",
+        0
+      ]
+    },
+    "class_type": "VAEDecode"
+  },
+  "ltx_decode_audio": {
+    "inputs": {
+      "samples": [
+        "ltx_separate",
+        1
+      ],
+      "vae": [
+        "ltx_vae_audio",
+        0
+      ]
+    },
+    "class_type": "VAEDecode"
+  },
+  "ltx_out_video": {
+    "inputs": {
+      "images": [
+        "ltx_decode_video",
+        0
+      ],
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "ltx_av/",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "pingpong": false,
+      "save_output": true
+    },
+    "class_type": "VHS_VideoCombine"
+  },
+  "ltx_out_audio": {
+    "inputs": {
+      "audio": [
+        "ltx_decode_audio",
+        0
+      ],
+      "filename_prefix": "ltx_av/",
+      "format": "wav"
+    },
+    "class_type": "SaveAudio"
+  }
+}

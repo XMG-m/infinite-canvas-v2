@@ -1,0 +1,105 @@
+{
+  "f1_ckpt": {
+    "inputs": {
+      "ckpt_name": "flux1-knotext-dev_fp8_e4m3fn.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple"
+  },
+  "f1_pos": {
+    "inputs": {
+      "text": "{{prompt}}",
+      "clip": [
+        "f1_ckpt",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "f1_neg": {
+    "inputs": {
+      "text": "blurry, low quality, ugly, distorted, worst quality",
+      "clip": [
+        "f1_ckpt",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "f1_zero": {
+    "inputs": {
+      "conditioning": [
+        "f1_neg",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut"
+  },
+  "f1_guidance": {
+    "inputs": {
+      "conditioning": [
+        "f1_pos",
+        0
+      ],
+      "guidance": 3.5
+    },
+    "class_type": "FluxGuidance"
+  },
+  "f1_latent": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage"
+  },
+  "f1_ks": {
+    "inputs": {
+      "seed": 0,
+      "steps": 20,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": [
+        "f1_ckpt",
+        0
+      ],
+      "positive": [
+        "f1_guidance",
+        0
+      ],
+      "negative": [
+        "f1_zero",
+        0
+      ],
+      "latent_image": [
+        "f1_latent",
+        0
+      ]
+    },
+    "class_type": "KSampler"
+  },
+  "f1_decode": {
+    "inputs": {
+      "samples": [
+        "f1_ks",
+        0
+      ],
+      "vae": [
+        "f1_ckpt",
+        2
+      ]
+    },
+    "class_type": "VAEDecode"
+  },
+  "f1_save": {
+    "inputs": {
+      "images": [
+        "f1_decode",
+        0
+      ],
+      "filename_prefix": "flux1_pro/"
+    },
+    "class_type": "SaveImage"
+  }
+}

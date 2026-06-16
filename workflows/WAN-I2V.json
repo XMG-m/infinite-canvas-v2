@@ -1,0 +1,233 @@
+{
+  "ldimg": {
+    "inputs": {
+      "image": "{{image}}"
+    },
+    "class_type": "LoadImage"
+  },
+  "resize": {
+    "inputs": {
+      "image": [
+        "ldimg",
+        0
+      ],
+      "width": 720,
+      "height": 720,
+      "crop": "center",
+      "keep_proportion": "pad",
+      "divisible_by": 16,
+      "upscale_method": "lanczos",
+      "pad_color": "0,0,0",
+      "crop_position": "center"
+    },
+    "class_type": "ImageResizeKJv2"
+  },
+  "clip": {
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "cpu"
+    },
+    "class_type": "CLIPLoader"
+  },
+  "vae": {
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "class_type": "VAELoader"
+  },
+  "cv": {
+    "inputs": {
+      "clip_name": "clip_vision_h.safetensors"
+    },
+    "class_type": "CLIPVisionLoader"
+  },
+  "cv_encode": {
+    "inputs": {
+      "clip_vision": [
+        "cv",
+        0
+      ],
+      "image": [
+        "resize",
+        0
+      ],
+      "crop": "center"
+    },
+    "class_type": "CLIPVisionEncode"
+  },
+  "pos": {
+    "inputs": {
+      "text": "{{prompt}}",
+      "clip": [
+        "clip",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "neg": {
+    "inputs": {
+      "text": "blurry, distorted, ugly",
+      "clip": [
+        "clip",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "unet_h": {
+    "inputs": {
+      "unet_name": "Wan/smoothMixWan22I2VT2V_i2vHigh.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader"
+  },
+  "unet_l": {
+    "inputs": {
+      "unet_name": "Wan/smoothMixWan22I2VT2V_i2vLow.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader"
+  },
+  "ms_h": {
+    "inputs": {
+      "shift": 8.0,
+      "model": [
+        "unet_h",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingSD3"
+  },
+  "ms_l": {
+    "inputs": {
+      "shift": 8.0,
+      "model": [
+        "unet_l",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingSD3"
+  },
+  "i2v": {
+    "inputs": {
+      "width": 720,
+      "height": 720,
+      "length": 81,
+      "batch_size": 1,
+      "positive": [
+        "pos",
+        0
+      ],
+      "negative": [
+        "neg",
+        0
+      ],
+      "vae": [
+        "vae",
+        0
+      ],
+      "clip_vision_output": [
+        "cv_encode",
+        0
+      ],
+      "start_image": [
+        "resize",
+        0
+      ]
+    },
+    "class_type": "WanImageToVideo"
+  },
+  "ks_h": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": 0,
+      "steps": 4,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "start_at_step": 0,
+      "end_at_step": 2,
+      "return_with_leftover_noise": "enable",
+      "model": [
+        "ms_h",
+        0
+      ],
+      "positive": [
+        "i2v",
+        0
+      ],
+      "negative": [
+        "i2v",
+        1
+      ],
+      "latent_image": [
+        "i2v",
+        2
+      ]
+    },
+    "class_type": "KSamplerAdvanced"
+  },
+  "ks_l": {
+    "inputs": {
+      "add_noise": "disable",
+      "noise_seed": 0,
+      "steps": 4,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "start_at_step": 2,
+      "end_at_step": 4,
+      "return_with_leftover_noise": "disable",
+      "model": [
+        "ms_l",
+        0
+      ],
+      "positive": [
+        "i2v",
+        0
+      ],
+      "negative": [
+        "i2v",
+        1
+      ],
+      "latent_image": [
+        "ks_h",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced"
+  },
+  "decode": {
+    "inputs": {
+      "samples": [
+        "ks_l",
+        0
+      ],
+      "vae": [
+        "vae",
+        0
+      ]
+    },
+    "class_type": "VAEDecode"
+  },
+  "out": {
+    "inputs": {
+      "images": [
+        "decode",
+        0
+      ],
+      "frame_rate": 16.0,
+      "loop_count": 0,
+      "filename_prefix": "wan_i2v/",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "pingpong": false,
+      "save_output": true
+    },
+    "class_type": "VHS_VideoCombine"
+  }
+}

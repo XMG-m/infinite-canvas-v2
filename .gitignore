@@ -1,0 +1,30 @@
+# Python
+python/
+packages/
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+*.bat
+*.ps1
+*.command
+*.sh
+get-pip.py
+赞赏.png
+
+# Docs (keep README)
+*.md
+!README.md
+
+# License
+LICENSE
