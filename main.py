@@ -7050,6 +7050,23 @@ VOLCENGINE_RATIO_CHOICES = [
     (4, 5, "4:5"),
 ]
 
+def is_seedream_model(model, provider=None):
+    """Seedream 模型走 DMXAPI Responses API（/v1/responses），不走 /v1/images/generations"""
+    value = str(model or "").strip().lower()
+    return "seedream" in value or "doubao-seedream" in value
+
+def seedream_size(size):
+    """Seedream 支持的尺寸映射（最低 3686400 像素 ≈ 1920x1920）"""
+    raw = str(size or "").strip().lower()
+    w, h = parse_size_pair(raw)
+    if w and h:
+        if w * h < 3686400:
+            scale = (3686400 / (w * h)) ** 0.5
+            w, h = int(w * scale), int(h * scale)
+        return f"{w}x{h}"
+    # 默认 1920x1920
+    return "1920x1920"
+
 def is_volcengine_seedream_model(model):
     value = str(model or "").strip().lower()
     return "seedream" in value or "doubao-seedream" in value
@@ -8361,6 +8378,53 @@ async def generate_runninghub_video(payload, provider):
         local_urls = [await save_remote_video_to_output(url, prefix="rh_video_") for url in urls]
         return {"videos": local_urls, "task_id": task_id, "raw": result}
 
+async def generate_seedream_image(prompt, size, model, provider):
+    """Seedream 模型通过 DMXAPI Responses API 生图（POST /v1/responses）"""
+    base_url = str(provider.get("base_url") or AI_BASE_URL).strip().rstrip("/")
+    api_key = os.getenv(provider_key_env(provider["id"]), "")
+    if not api_key:
+        raise HTTPException(status_code=400, detail=f"未配置 {provider.get('name') or provider['id']} 的 API Key")
+    # DMXAPI auth: Authorization: {api_key}（无 Bearer 前缀）
+    headers = {"Content-Type": "application/json", "Authorization": api_key}
+    body = {
+        "model": model,
+        "input": prompt,
+        "size": seedream_size(size),
+        "output_format": "png",
+        "response_format": "url",
+        "watermark": False,
+        "stream": False,
+    }
+    url = f"{base_url}/v1/responses"
+    async with httpx.AsyncClient(timeout=600.0) as client:
+        resp = await client.post(url, headers=headers, json=body)
+        resp.raise_for_status()
+        data = resp.json()
+    # 解析 markdown 中的图片 URL: ![Image N](url)
+    content = data.get("output", [])
+    if isinstance(content, list):
+        all_texts = []
+        for msg in content:
+            if isinstance(msg, dict):
+                blocks = msg.get("content", [])
+                if isinstance(blocks, list):
+                    for block in blocks:
+                        if isinstance(block, dict) and block.get("type") == "output_text":
+                            all_texts.append(str(block.get("text", "") or ""))
+        text = " ".join(all_texts)
+    else:
+        text = str(content or "")
+    image_urls = re.findall(r'!\[.*?\]\((https?://[^\s)]+)\)', text)
+    if not image_urls:
+        raw_text = str(data)[:500]
+        raise HTTPException(status_code=502, detail=f"Seedream 未返回图片：{raw_text}")
+    # 下载第一张图片并返回 bytes
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        img_resp = await client.get(image_urls[0], follow_redirects=True)
+        img_resp.raise_for_status()
+        image_data = img_resp.content
+    return image_data, data
+
 async def generate_ai_image(prompt, size, quality, model, reference_images=None, provider_id="comfly"):
     provider = get_api_provider(provider_id)
     if provider["id"] == "modelscope":
@@ -8373,6 +8437,8 @@ async def generate_ai_image(prompt, size, quality, model, reference_images=None,
         return await generate_gemini_provider_image(prompt, size, model, reference_images, provider)
     if is_volcengine_provider(provider):
         return await generate_volcengine_provider_image(prompt, size, model, reference_images, provider)
+    if is_seedream_model(model):
+        return await generate_seedream_image(prompt, size, model, provider)
     is_gpt2 = is_gpt_image_2_model(model)
     is_apimart = is_apimart_provider(provider)
     # 不对 GPT 尺寸做任何缩小/拦截：用户选什么尺寸就原样发给上游；
