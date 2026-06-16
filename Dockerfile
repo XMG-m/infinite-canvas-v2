@@ -10,8 +10,8 @@ COPY workflows/ ./workflows/
 COPY main.py .
 
 ENV HOST=0.0.0.0
-ENV PORT=3000
+ENV PORT=4000
 
-EXPOSE 3000
+EXPOSE 4000
 
 CMD ["python", "main.py"]
