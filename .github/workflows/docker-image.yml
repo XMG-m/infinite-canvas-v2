@@ -9,20 +9,24 @@ permissions:
   contents: read
   packages: write
 
-env:
-  IMAGE_NAME: ghcr.io/${{ github.repository }}
-
 jobs:
   meta:
     runs-on: ubuntu-latest
     outputs:
       tags: ${{ steps.meta.outputs.tags }}
       labels: ${{ steps.meta.outputs.labels }}
+      image-name: ${{ steps.lower.outputs.image-name }}
     steps:
+      - name: Lowercase image name
+        id: lower
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image-name=ghcr.io/${OWNER}/infinite-canvas-v2" >> "$GITHUB_OUTPUT"
+
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_NAME }}
+          images: ${{ steps.lower.outputs.image-name }}
           tags: |
             type=ref,event=tag
             type=sha,prefix=
@@ -58,7 +62,7 @@ jobs:
           context: .
           platforms: ${{ matrix.platform }}
           labels: ${{ needs.meta.outputs.labels }}
-          outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ needs.meta.outputs.image-name }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=app-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=app-${{ matrix.arch }}
 
@@ -100,6 +104,7 @@ jobs:
         shell: bash
         env:
           TAGS: ${{ needs.meta.outputs.tags }}
+          IMAGE_NAME: ${{ needs.meta.outputs.image-name }}
         run: |
           tag_args=()
           while IFS= read -r tag; do

@@ -1,0 +1,28 @@
+# Local Python runtime (not needed in Docker)
+python/
+packages/
+
+# Dev tools
+tools/
+
+# Docs
+*.md
+!README.md
+*.txt
+!requirements.txt
+LICENSE
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# System-specific
+.bat
+.ps1
+.command
+.sh
+get-pip.py
+
+# Images not needed
+赞赏.png
