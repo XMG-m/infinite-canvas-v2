@@ -14177,7 +14177,14 @@ def generate(req: GenerateRequest):
 
 # --- ComfyUI 工作流管理 ---
 
-BUILTIN_WORKFLOWS = {"Z-Image.json", "Z-Image-Enhance.json", "2511.json", "klein-enhance.json", "Flux2-Klein.json", "upscale.json"}
+BUILTIN_WORKFLOWS = {
+    "Z-Image.json", "Z-Image-Enhance.json", "2511.json", "klein-enhance.json", "Flux2-Klein.json", "upscale.json",
+    # Additional ComfyUI workflow templates
+    "WAN-T2V.json", "WAN-I2V.json", "Magic-WAN-T2V.json", "LightX2V-I2V.json",
+    "Flux1-Pro.json", "Flux2-Pro.json",
+    "LTX-23-AV.json", "LTX-23-AV-Lite.json", "LTX-23-Digital-Human.json",
+    "Qwen3-TTS.json", "SeedVR2.json",
+}
 CUSTOM_WORKFLOW_FOLDER = "custom"
 LEGACY_CUSTOM_WORKFLOW_FOLDER = "自定义"
 WORKFLOW_NAME_RE = re.compile(rf"^(?:(?:{CUSTOM_WORKFLOW_FOLDER}|{LEGACY_CUSTOM_WORKFLOW_FOLDER})/)?[a-zA-Z0-9_一-龥\.\-]+\.json$")
